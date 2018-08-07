@@ -47,6 +47,16 @@ func ReadStr(fp *os.File, beginIndex *int64, length int64) (string, error) {
 	}
 }
 
+func LoadType(fp *os.File, beginIndex *int64) (byte, error) {
+	str, err := ReadStr(fp, beginIndex, 1)
+	if err != nil {
+		return 0, err
+	}
+
+	fmt.Println(str[0])
+	return str[0], err
+}
+
 func main() {
 	file, err := os.Open("dump.rdb")
 	if err != nil {
@@ -71,5 +81,18 @@ func main() {
 	if version < 1 || version > REDIS_VERSION {
 		fmt.Printf("Can't handle RDB format version %s\n", version)
 		os.Exit(-1)
+	}
+
+	for {
+		// load type
+		redisType, err := LoadType(file, &curIndex)
+		checkErr(err)
+
+		if redisType == RDB_OPCODE_AUX {
+			fmt.Println("parsing aux...")
+		} else {
+			fmt.Println(redisType)
+			os.Exit(-1)
+		}
 	}
 }
