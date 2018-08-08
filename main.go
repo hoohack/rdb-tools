@@ -60,12 +60,33 @@ func (r *Rdb) ReadStr(fp *os.File, length int64) (string, error) {
 }
 
 func (r *Rdb) LoadInteger(fp *os.File, encType int) (string, error) {
-	str, err := r.ReadStr(fp, 1)
-	if err != nil {
-		return "", err
-	}
+	intVal := 0
 
-	intVal := int(str[0])
+	if encType == RDB_ENC_INT8 {
+		buf, err := r.ReadStr(fp, 1)
+		if err != nil {
+			return "", err
+		}
+
+		intVal = int(buf[0])
+	} else if encType == RDB_ENC_INT16 {
+		buf, err := r.ReadStr(fp, 2)
+		if err != nil {
+			return "", err
+		}
+
+		intVal = int(buf[0]) | (int(buf[1]) << 8)
+	} else if encType == RDB_ENC_INT32 {
+		buf, err := r.ReadStr(fp, 4)
+		if err != nil {
+			return "", err
+		}
+
+		intVal = int(buf[0]) | (int(buf[1]) << 8) | (int(buf[2]) << 16) | (int(buf[3]) << 24)
+	} else {
+		intVal = 0
+		return "", fmt.Errorf("Unknown RDB integer encoding type %d", encType)
+	}
 
 	return strconv.Itoa(intVal), nil
 }
@@ -118,7 +139,7 @@ func (r *Rdb) LoadStringObject(fp *os.File) (string, error) {
 			return r.LoadInteger(fp, strLen)
 		default:
 			fmt.Println("default***********************")
-			return "", errors.New("Unknown RDB string encoding type")
+			return "", fmt.Errorf("Unknown RDB string encoding type: %s", strLen)
 		}
 	}
 
