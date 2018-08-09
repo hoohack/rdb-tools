@@ -28,9 +28,17 @@ const RDB_ENC_INT16 = 1 /* 16 bit signed integer */
 const RDB_ENC_INT32 = 2 /* 32 bit signed integer */
 const RDB_ENC_LZF = 3   /* string compressed with FASTLZ */
 
+type redisObject struct {
+	key string
+	val string
+}
+
 type Rdb struct {
-	curIndex int64
-	version  int
+	curIndex    int64
+	version     int
+	dbId        int
+	dbSize      int
+	expiresSize int
 }
 
 func checkErr(err error) {
@@ -118,7 +126,7 @@ func (r *Rdb) LoadStrLen(fp *os.File, isEncoded *bool) (int, error) {
 	} else if lenType == RDB_6BITLEN {
 		return int(lenBuf[0]) & 0x3F, nil
 	} else {
-		fmt.Printf("Unknown length encoding %d in rdbLoadLen()", lenType)
+		fmt.Printf("Unknown length encoding %d in rdbLoadLen()\n", lenType)
 		return -1, errors.New("Unknown length encoding")
 	}
 
@@ -159,7 +167,7 @@ func main() {
 	}
 
 	defer file.Close()
-	rdb := &Rdb{int64(0), 0}
+	rdb := &Rdb{int64(0), 0, 0, 0, 0}
 
 	// check redis rdb file signature
 	str, _ := rdb.ReadStr(file, int64(9))
@@ -177,7 +185,7 @@ func main() {
 	}
 	rdb.version = version
 
-	fmt.Printf("Current rdb file redis version is  %d\n", version)
+	fmt.Printf("Rdb file version: %d\n", version)
 
 	for {
 		// load type
@@ -190,10 +198,52 @@ func main() {
 
 			auxVal, err := rdb.LoadStringObject(file)
 			checkErr(err)
-			fmt.Printf("key %s : val %s\n", auxKey, auxVal)
-		} else {
-			fmt.Printf("Wrong type %d\n", redisType)
-			os.Exit(-1)
+			fmt.Printf("%s: %s\n", auxKey, auxVal)
+
+			continue
+		} else if redisType == RDB_OPCODE_SELECTDB {
+			dbId, err := rdb.LoadStrLen(file, nil)
+			if err != nil {
+				fmt.Println("Fail to load dbId")
+				os.Exit(-1)
+			}
+
+			rdb.dbId = dbId
+			fmt.Printf("Selected DB: %d\n", rdb.dbId)
+
+			continue
+		} else if redisType == RDB_OPCODE_RESIZEDB {
+			dbSize, err := rdb.LoadStrLen(file, nil)
+			if err != nil {
+				fmt.Println("Fail to load dbSize")
+				os.Exit(-1)
+			}
+
+			expiresSize, err := rdb.LoadStrLen(file, nil)
+			if err != nil {
+				fmt.Println("Fail to load expires size")
+				os.Exit(-1)
+			}
+
+			rdb.dbSize = dbSize
+			rdb.expiresSize = expiresSize
+
+			fmt.Printf("Rdb dbSize: %d\n", rdb.dbSize)
+			fmt.Printf("Rdb expiresSize: %d\n", rdb.expiresSize)
+
+			continue
+		} else if redisType == RDB_OPCODE_EOF {
+			fmt.Println("Reach file eof, parsing work finished")
+			break
 		}
+
+		redisKey, err := rdb.LoadStringObject(file)
+		checkErr(err)
+
+		redisVal, err := rdb.LoadStringObject(file)
+		checkErr(err)
+
+		fmt.Printf("%s: %s\n", redisKey, redisVal)
+
 	}
 }
