@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -29,8 +30,6 @@ const RDB_ENC_INT32 = 2 /* 32 bit signed integer */
 const RDB_ENC_LZF = 3   /* string compressed with FASTLZ */
 
 type redisObject struct {
-	key string
-	val string
 }
 
 type Rdb struct {
@@ -39,6 +38,7 @@ type Rdb struct {
 	dbId        int
 	dbSize      int
 	expiresSize int
+	expireTime  int64
 }
 
 func checkErr(err error) {
@@ -125,6 +125,12 @@ func (r *Rdb) LoadStrLen(fp *os.File, isEncoded *bool) (int, error) {
 		return int(lenBuf[0]) & 0x3F, nil
 	} else if lenType == RDB_6BITLEN {
 		return int(lenBuf[0]) & 0x3F, nil
+	} else if lenType == RDB_14BITLEN {
+		buf, err := r.ReadStr(fp, 1)
+		if err != nil {
+			return 0, err
+		}
+		return (int(lenBuf[0])&0x3F)<<8 | int(buf[0]), nil
 	} else {
 		fmt.Printf("Unknown length encoding %d in rdbLoadLen()\n", lenType)
 		return -1, errors.New("Unknown length encoding")
@@ -159,15 +165,31 @@ func (r *Rdb) LoadStringObject(fp *os.File) (string, error) {
 	return str, nil
 }
 
+func (r *Rdb) LoadMillisecondTime(fp *os.File) (int64, error) {
+	buf, err := r.ReadStr(fp, 8)
+	if err != nil {
+		return 0, err
+	}
+
+	expireTime := int64(buf[0]) | (int64(buf[1]) << 8) | (int64(buf[2]) << 16) | (int64(buf[3]) << 24) | (int64(buf[4]) << 32) | (int64(buf[5]) << 40) | (int64(buf[6]) << 48) | (int64(buf[7]) << 52)
+
+	return expireTime, nil
+}
+
+func (r *Rdb) LoadObject(loadType byte, fp *os.File) (int, error) {
+	fmt.Printf("type: %d\n", loadType)
+	return 0, nil
+}
+
 func main() {
-	file, err := os.Open("dump.rdb")
+	file, err := os.Open("dump-8003.rdb")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
 	defer file.Close()
-	rdb := &Rdb{int64(0), 0, 0, 0, 0}
+	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0}
 
 	// check redis rdb file signature
 	str, _ := rdb.ReadStr(file, int64(9))
@@ -232,6 +254,15 @@ func main() {
 			fmt.Printf("Rdb expiresSize: %d\n", rdb.expiresSize)
 
 			continue
+		} else if redisType == RDB_OPCODE_EXPIRETIME_MS {
+			rdb.expireTime, err = rdb.LoadMillisecondTime(file)
+			if err != nil {
+				fmt.Println("Fail to load millisecondtime")
+				os.Exit(-1)
+			}
+
+			redisType, err = rdb.LoadType(file)
+			checkErr(err)
 		} else if redisType == RDB_OPCODE_EOF {
 			fmt.Println("Reach file eof, parsing work finished")
 			break
@@ -240,7 +271,8 @@ func main() {
 		redisKey, err := rdb.LoadStringObject(file)
 		checkErr(err)
 
-		redisVal, err := rdb.LoadStringObject(file)
+		redisVal, err := rdb.LoadObject(redisType, file)
+		os.Exit(-1)
 		checkErr(err)
 
 		fmt.Printf("%s: %s\n", redisKey, redisVal)
