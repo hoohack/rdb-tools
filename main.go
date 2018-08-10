@@ -171,7 +171,8 @@ func (r *Rdb) LoadMillisecondTime(fp *os.File) (int64, error) {
 		return 0, err
 	}
 
-	expireTime := int64(buf[0]) | (int64(buf[1]) << 8) | (int64(buf[2]) << 16) | (int64(buf[3]) << 24) | (int64(buf[4]) << 32) | (int64(buf[5]) << 40) | (int64(buf[6]) << 48) | (int64(buf[7]) << 52)
+	bufByte := []byte(buf)
+	expireTime := int64(binary.LittleEndian.Uint64(bufByte))
 
 	return expireTime, nil
 }
