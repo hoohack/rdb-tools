@@ -1,12 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
+	//"strings"
 )
 
 const REDIS_VERSION = 8
@@ -63,17 +64,17 @@ func eofErr() {
 	os.Exit(-1)
 }
 
-func (r *Rdb) ReadStr(length int64) (string, error) {
+func (r *Rdb) ReadBuf(length int64) ([]byte, error) {
 	buf := make([]byte, length)
 	size, err := r.fp.ReadAt(buf[:length], r.curIndex)
 	checkErr(err)
 
 	if size < 0 {
 		fmt.Fprintf(os.Stderr, "cat: error reading: %s\n", err.Error())
-		return "", err
+		return []byte{}, err
 	} else {
 		r.curIndex += length
-		return string(buf[:]), nil
+		return buf, nil
 	}
 }
 
@@ -81,21 +82,21 @@ func (r *Rdb) LoadInteger(encType int) (string, error) {
 	intVal := 0
 
 	if encType == RDB_ENC_INT8 {
-		buf, err := r.ReadStr(1)
+		buf, err := r.ReadBuf(1)
 		if err != nil {
 			return "", err
 		}
 
 		intVal = int(buf[0])
 	} else if encType == RDB_ENC_INT16 {
-		buf, err := r.ReadStr(2)
+		buf, err := r.ReadBuf(2)
 		if err != nil {
 			return "", err
 		}
 
 		intVal = int(buf[0]) | (int(buf[1]) << 8)
 	} else if encType == RDB_ENC_INT32 {
-		buf, err := r.ReadStr(4)
+		buf, err := r.ReadBuf(4)
 		if err != nil {
 			return "", err
 		}
@@ -110,7 +111,7 @@ func (r *Rdb) LoadInteger(encType int) (string, error) {
 }
 
 func (r *Rdb) LoadType() (byte, error) {
-	str, err := r.ReadStr(1)
+	str, err := r.ReadBuf(1)
 	if err != nil {
 		return 0, err
 	}
@@ -122,7 +123,7 @@ func (r *Rdb) LoadStrLen(isEncoded *bool) (int, error) {
 	if isEncoded != nil {
 		*isEncoded = false
 	}
-	lenBuf, err := r.ReadStr(1)
+	lenBuf, err := r.ReadBuf(1)
 	if len(lenBuf) == 0 || err != nil {
 		return -1, err
 	}
@@ -136,7 +137,7 @@ func (r *Rdb) LoadStrLen(isEncoded *bool) (int, error) {
 	} else if lenType == RDB_6BITLEN {
 		return int(lenBuf[0]) & 0x3F, nil
 	} else if lenType == RDB_14BITLEN {
-		buf, err := r.ReadStr(1)
+		buf, err := r.ReadBuf(1)
 		if err != nil {
 			return 0, err
 		}
@@ -167,16 +168,16 @@ func (r *Rdb) LoadStringObject() (string, error) {
 		}
 	}
 
-	str, err := r.ReadStr(int64(strLen))
+	buf, err := r.ReadBuf(int64(strLen))
 	if err != nil {
 		return "", err
 	}
 
-	return str, nil
+	return string(buf), nil
 }
 
 func (r *Rdb) LoadMillisecondTime() (int64, error) {
-	buf, err := r.ReadStr(8)
+	buf, err := r.ReadBuf(8)
 	if err != nil {
 		return 0, err
 	}
@@ -212,14 +213,14 @@ func main() {
 	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file}
 
 	// check redis rdb file signature
-	str, _ := rdb.ReadStr(int64(9))
-	if strings.Compare("REDIS", str[0:5]) != 0 {
+	buf, _ := rdb.ReadBuf(int64(9))
+	if bytes.Compare([]byte("REDIS"), buf[0:5]) != 0 {
 		fmt.Println("Wrong signature file")
 		os.Exit(-1)
 	}
 
 	// check redis rdb file version
-	version, err := strconv.Atoi(str[5:])
+	version, err := strconv.Atoi(string(buf[5:]))
 	checkErr(err)
 	if version < 1 || version > REDIS_VERSION {
 		fmt.Printf("Can't handle RDB format version %s\n", version)
