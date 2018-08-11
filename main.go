@@ -38,10 +38,6 @@ const RDB_TYPE_ZSET_2 = 5 /* ZSET version 2 with doubles stored in binary. */
 const RDB_TYPE_MODULE = 6
 const RDB_TYPE_MODULE_2 = 7
 
-type redisObject struct {
-	key string
-}
-
 type Rdb struct {
 	curIndex    int64
 	version     int
@@ -242,17 +238,45 @@ func (r *Rdb) LoadMillisecondTime() (int64, error) {
 	return expireTime, nil
 }
 
-func (r *Rdb) LoadObject(loadType byte) (string, error) {
-	if loadType == RDB_TYPE_STRING {
+func (r *Rdb) LoadObject(objType byte) (string, error) {
+	if objType == RDB_TYPE_STRING {
 		strVal, err := r.LoadStringObject()
 		if err != nil {
 			fmt.Println("Fail to load string object")
-			os.Exit(-1)
+			return "", err
 		}
 
 		return strVal, nil
+	} else if objType == RDB_TYPE_HASH {
+		objLen, err := r.LoadLen(nil)
+		if err != nil {
+			fmt.Println("Fail to load hash object len")
+			return "", err
+		}
+
+		i := 0
+		for {
+			if i >= objLen {
+				break
+			}
+			hashField, err := r.LoadStringObject()
+			if err != nil {
+				fmt.Println("Fail to load hash field")
+				return "", err
+			}
+
+			hashValue, err := r.LoadStringObject()
+			if err != nil {
+				fmt.Println("Fail to load hash value")
+				return "", err
+			}
+
+			i++
+		}
+
+		return "", nil
 	} else {
-		fmt.Printf("object type %d\n", loadType)
+		fmt.Printf("object type %d\n", objType)
 		return "", nil
 	}
 }
@@ -346,6 +370,7 @@ func main() {
 
 		redisKey, err := rdb.LoadStringObject()
 		checkErr(err)
+		fmt.Printf("key: %s\n", redisKey)
 
 		redisVal, err := rdb.LoadObject(redisType)
 		checkErr(err)
