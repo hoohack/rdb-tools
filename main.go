@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	//"strings"
 )
 
 const REDIS_VERSION = 8
@@ -40,6 +39,7 @@ const RDB_TYPE_MODULE = 6
 const RDB_TYPE_MODULE_2 = 7
 
 type redisObject struct {
+	key string
 }
 
 type Rdb struct {
@@ -110,6 +110,58 @@ func (r *Rdb) LoadInteger(encType int) (string, error) {
 	return strconv.Itoa(intVal), nil
 }
 
+func (r *Rdb) lzfDecompress(compressedBuf []byte, inLen int, strLen int) string {
+	decompressedRet := make([]byte, strLen)
+	for i, j := 0, 0; i < inLen; {
+		ctrl := int(compressedBuf[i])
+		i++
+		if ctrl < (1 << 5) {
+			for x := 0; x <= ctrl; x++ {
+				decompressedRet[j] = compressedBuf[i]
+				i++
+				j++
+			}
+		} else {
+			length := ctrl >> 5
+			if length == 7 {
+				length = length + int(compressedBuf[i])
+				i++
+			}
+			ref := j - ((ctrl & 0x1f) << 8) - int(compressedBuf[i]) - 1
+			i++
+			for x := 0; x <= length+1; x++ {
+				decompressedRet[j] = decompressedRet[ref]
+				ref++
+				j++
+			}
+		}
+	}
+
+	return string(decompressedRet)
+}
+
+func (r *Rdb) LoadLzfString(encType int) (string, error) {
+	cLen, err := r.LoadLen(nil)
+	if err != nil {
+		fmt.Println("Fail to load len")
+	}
+
+	sLen, err := r.LoadLen(nil)
+	if err != nil {
+		fmt.Println("Fail to load len")
+	}
+
+	compressedBuf, err := r.ReadBuf(int64(cLen))
+	if err != nil {
+		fmt.Println(compressedBuf)
+		return "", err
+	}
+
+	deCompressedStr := r.lzfDecompress(compressedBuf, cLen, sLen)
+
+	return deCompressedStr, nil
+}
+
 func (r *Rdb) LoadType() (byte, error) {
 	str, err := r.ReadBuf(1)
 	if err != nil {
@@ -119,7 +171,7 @@ func (r *Rdb) LoadType() (byte, error) {
 	return str[0], err
 }
 
-func (r *Rdb) LoadStrLen(isEncoded *bool) (int, error) {
+func (r *Rdb) LoadLen(isEncoded *bool) (int, error) {
 	if isEncoded != nil {
 		*isEncoded = false
 	}
@@ -153,7 +205,7 @@ func (r *Rdb) LoadStrLen(isEncoded *bool) (int, error) {
 func (r *Rdb) LoadStringObject() (string, error) {
 	isEncoded := false
 
-	strLen, err := r.LoadStrLen(&isEncoded)
+	strLen, err := r.LoadLen(&isEncoded)
 	if err != nil {
 		return "", err
 	}
@@ -162,6 +214,8 @@ func (r *Rdb) LoadStringObject() (string, error) {
 		switch strLen {
 		case RDB_ENC_INT8, RDB_ENC_INT16, RDB_ENC_INT32:
 			return r.LoadInteger(strLen)
+		case RDB_ENC_LZF:
+			return r.LoadLzfString(strLen)
 		default:
 			fmt.Println("default***********************")
 			return "", fmt.Errorf("Unknown RDB string encoding type: %s", strLen)
@@ -198,12 +252,13 @@ func (r *Rdb) LoadObject(loadType byte) (string, error) {
 
 		return strVal, nil
 	} else {
+		fmt.Printf("object type %d\n", loadType)
 		return "", nil
 	}
 }
 
 func main() {
-	file, err := os.Open("dump-8003.rdb")
+	file, err := os.Open("dump.rdb")
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -245,7 +300,7 @@ func main() {
 
 			continue
 		} else if redisType == RDB_OPCODE_SELECTDB {
-			dbId, err := rdb.LoadStrLen(nil)
+			dbId, err := rdb.LoadLen(nil)
 			if err != nil {
 				fmt.Println("Fail to load dbId")
 				os.Exit(-1)
@@ -256,13 +311,13 @@ func main() {
 
 			continue
 		} else if redisType == RDB_OPCODE_RESIZEDB {
-			dbSize, err := rdb.LoadStrLen(nil)
+			dbSize, err := rdb.LoadLen(nil)
 			if err != nil {
 				fmt.Println("Fail to load dbSize")
 				os.Exit(-1)
 			}
 
-			expiresSize, err := rdb.LoadStrLen(nil)
+			expiresSize, err := rdb.LoadLen(nil)
 			if err != nil {
 				fmt.Println("Fail to load expires size")
 				os.Exit(-1)
