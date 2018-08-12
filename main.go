@@ -38,6 +38,25 @@ const RDB_TYPE_ZSET_2 = 5 /* ZSET version 2 with doubles stored in binary. */
 const RDB_TYPE_MODULE = 6
 const RDB_TYPE_MODULE_2 = 7
 
+const RDB_TYPE_HASH_ZIPMAP = 9
+const RDB_TYPE_LIST_ZIPLIST = 10
+const RDB_TYPE_SET_INTSET = 11
+const RDB_TYPE_ZSET_ZIPLIST = 12
+const RDB_TYPE_HASH_ZIPLIST = 13
+const RDB_TYPE_LIST_QUICKLIST = 14
+
+/* 字符串编码类型定义 */
+const ZIP_STR_06B = 0
+const ZIP_STR_14B = 1
+const ZIP_STR_32B = 2
+
+/* 整数编码类型定义 */
+const ZIP_INT_16B = 0xC0
+const ZIP_INT_32B = 0xD0
+const ZIP_INT_64B = 0xE0
+const ZIP_INT_24B = 0xF0
+const ZIP_INT_8B = 0xfe
+
 type Rdb struct {
 	curIndex    int64
 	version     int
@@ -46,6 +65,7 @@ type Rdb struct {
 	expiresSize int
 	expireTime  int64
 	fp          *os.File
+	rdbType     int
 }
 
 func checkErr(err error) {
@@ -238,6 +258,90 @@ func (r *Rdb) LoadMillisecondTime() (int64, error) {
 	return expireTime, nil
 }
 
+func (r *Rdb) LoadZSetSize(setBuf string) (int64, error) {
+	bufByte := []byte(setBuf[8:10])
+
+	return int64(binary.LittleEndian.Uint16(bufByte)), nil
+}
+
+/*
+* ziplist format
+* <length-prev-entry><special-flag><raw-bytes-of-entry>
+ */
+func (r *Rdb) LoadZipListEntry(setBuf string, curIndex *int) (string, error) {
+	prevEntryLen := byte(setBuf[*curIndex])
+	*curIndex++
+
+	if prevEntryLen == 254 {
+		*curIndex += 4
+	}
+
+	specialFlag := byte(setBuf[*curIndex])
+	*curIndex++
+	switch {
+	case specialFlag>>6 == ZIP_STR_06B:
+		*curIndex++
+
+		return string(int(specialFlag & 0x3F)), nil
+	case specialFlag>>6 == ZIP_STR_14B:
+		nextIndex := *curIndex + 1
+		valBuf := byte(setBuf[nextIndex])
+		*curIndex++
+
+		nextIndex = (int(specialFlag&0x3f) << 8) | int(valBuf)
+		*curIndex = nextIndex
+
+		return setBuf[*curIndex:nextIndex], nil
+	case specialFlag>>6 == ZIP_STR_32B:
+		nextIndex := *curIndex + 4
+		lenBuf := []byte(setBuf[*curIndex:nextIndex])
+		*curIndex = nextIndex
+
+		nextIndex = int(binary.BigEndian.Uint32(lenBuf))
+		*curIndex = nextIndex
+
+		return setBuf[*curIndex:nextIndex], nil
+	case specialFlag == ZIP_INT_8B:
+		valBuf := byte(setBuf[*curIndex])
+		*curIndex++
+
+		return strconv.FormatInt(int64(int8(valBuf)), 10), nil
+	case specialFlag == ZIP_INT_16B:
+		nextIndex := *curIndex + 2
+		valBuf := []byte(setBuf[*curIndex:nextIndex])
+
+		*curIndex = nextIndex
+
+		return strconv.FormatInt(int64(int16(binary.LittleEndian.Uint16(valBuf))), 10), nil
+	case specialFlag == ZIP_INT_24B:
+		nextIndex := *curIndex + 3
+		valBuf := []byte(setBuf[*curIndex:nextIndex])
+
+		// a trick to do array unshift
+		valBuf = append([]byte{0}, valBuf[0], valBuf[1], valBuf[2])
+
+		*curIndex = nextIndex
+
+		return strconv.FormatInt(int64(int32(binary.LittleEndian.Uint32(valBuf))>>8), 10), nil
+	case specialFlag == ZIP_INT_32B:
+		nextIndex := *curIndex + 4
+		valBuf := []byte(setBuf[*curIndex:nextIndex])
+
+		*curIndex = nextIndex
+
+		return strconv.FormatInt(int64(int32(binary.LittleEndian.Uint32(valBuf))), 10), nil
+	case specialFlag == ZIP_INT_64B:
+		nextIndex := *curIndex + 8
+		valBuf := []byte(setBuf[*curIndex:nextIndex])
+
+		*curIndex = nextIndex
+
+		return strconv.FormatInt(int64(binary.LittleEndian.Uint64(valBuf)), 10), nil
+	}
+
+	return "", fmt.Errorf("unknown ziplist specialFlag: %d", specialFlag)
+}
+
 func (r *Rdb) LoadObject(objType byte) (string, error) {
 	if objType == RDB_TYPE_STRING {
 		strVal, err := r.LoadStringObject()
@@ -271,8 +375,58 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 				return "", err
 			}
 
+			fmt.Printf("%s => %s\n", hashField, hashValue)
 			i++
 		}
+
+		return "", nil
+	} else if objType == RDB_TYPE_ZSET_ZIPLIST {
+		r.rdbType = RDB_TYPE_ZSET_ZIPLIST
+		encodedStr, err := r.LoadStringObject()
+		if err != nil {
+			fmt.Println("Fail to load string")
+			return "", err
+		}
+
+		setSize, err := r.LoadZSetSize(encodedStr)
+		if err != nil {
+			return "", err
+		}
+
+		setSize /= 2
+		curIndex := 10
+		decodeStr := ""
+
+		for i := int64(0); i < setSize; i++ {
+			member, err := r.LoadZipListEntry(encodedStr, &curIndex)
+			if err != nil {
+				return "", err
+			}
+
+			scoreBuf, err := r.LoadZipListEntry(encodedStr, &curIndex)
+			if err != nil {
+				return "", err
+			}
+
+			scoreVal, err := strconv.ParseFloat(scoreBuf, 64)
+			if err != nil {
+				return "", err
+			}
+
+			decodeStr += fmt.Sprintf("%s => %.0f ; ", member, scoreVal)
+		}
+
+		fmt.Printf("decodeStr: %s", decodeStr)
+
+		return decodeStr, nil
+	} else if objType == RDB_TYPE_SET_INTSET {
+		encodedStr, err := r.LoadStringObject()
+		if err != nil {
+			fmt.Println("Fail to load string")
+			return "", err
+		}
+
+		fmt.Printf("INTSET encoded :%s\n", encodedStr)
 
 		return "", nil
 	} else {
@@ -289,7 +443,7 @@ func main() {
 	}
 
 	defer file.Close()
-	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file}
+	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0}
 
 	// check redis rdb file signature
 	buf, _ := rdb.ReadBuf(int64(9))
