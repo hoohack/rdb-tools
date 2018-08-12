@@ -267,6 +267,24 @@ func (r *Rdb) LoadZSetSize(setBuf string) (int64, error) {
 /*
 * ziplist format
 * <length-prev-entry><special-flag><raw-bytes-of-entry>
+*       zlbytes: a 4 byte unsigned integer representing the total size in bytes of the ziplist. The 4 bytes are in little endian format - the least significant bit comes first.
+*       zltail: a 4 byte unsigned integer in little endian format. It represents the offset to the tail (i.e. last) entry in the ziplist
+*       zllen: This is a 2 byte unsigned integer in little endian format. It represents the number of entries in this ziplist
+*       entry: An entry represents an element in the ziplist. Details below
+*       zlend: Always 255. It represents the end of the ziplist.
+*
+* Each entry in the ziplist has the following format :
+*        <length-prev-entry><special-flag><raw-bytes-of-entry>
+* length-prev-entry: stores the length of the previous entry, or 0 if this is the first entry. This allows easy traversal of the list in the reverse direction. This length is stored in either 1 byte or in 5 bytes. If the first byte is less than or equal to 253, it is considered as the length. If the first byte is 254, then the next 4 bytes are used to store the length. The 4 bytes are read as an unsigned integer.
+* special-flag: This flag indicates whether the entry is a string or an integer. It also indicates the length of the string, or the size of the integer. The various encodings of this flag are shown below:
+* Bytes                 Length  Meaning
+* 00pppppp              1 byte  String value with length less than or equal to 63 bytes (6 bits)
+* 01pppppp|qqqqqqqq     2 bytes String value with length less than or equal to 16383 bytes (14 bits)
+* 10______|<4 byte>     5 bytes Next 4 byte contain an unsigned int. String value with length greater than or equal to 16384 bytes
+* 1100____              3 bytes Integer encoded as 16 bit signed (2 bytes)
+* 1101____              5 bytes Integer encoded as 32 bit signed (4 bytes)
+* 1110____              9 bytes Integer encoded as 64 bit signed (8 bytes)
+* 1111____              4 bytes Integer encoded as 24 bit signed (3 bytes)
  */
 func (r *Rdb) LoadZipListEntry(setBuf string, curIndex *int) (string, error) {
 	prevEntryLen := byte(setBuf[*curIndex])
