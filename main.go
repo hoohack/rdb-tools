@@ -56,6 +56,7 @@ const ZIP_INT_32B = 0xD0
 const ZIP_INT_64B = 0xE0
 const ZIP_INT_24B = 0xF0
 const ZIP_INT_8B = 0xfe
+const ZIP_INT_4B = 15
 
 type Rdb struct {
 	curIndex    int64
@@ -233,7 +234,6 @@ func (r *Rdb) LoadStringObject() (string, error) {
 		case RDB_ENC_LZF:
 			return r.LoadLzfString(strLen)
 		default:
-			fmt.Println("default***********************")
 			return "", fmt.Errorf("Unknown RDB string encoding type: %s", strLen)
 		}
 	}
@@ -295,12 +295,18 @@ func (r *Rdb) LoadZipListEntry(setBuf string, curIndex *int) (string, error) {
 	}
 
 	specialFlag := byte(setBuf[*curIndex])
+
 	*curIndex++
 	switch {
 	case specialFlag>>6 == ZIP_STR_06B:
-		*curIndex++
+		strLen := int(specialFlag & 0x3f)
 
-		return string(int(specialFlag & 0x3F)), nil
+		nextIndex := *curIndex + strLen
+		valBuf := setBuf[*curIndex:nextIndex]
+
+		*curIndex = nextIndex
+
+		return valBuf, nil
 	case specialFlag>>6 == ZIP_STR_14B:
 		nextIndex := *curIndex + 1
 		valBuf := byte(setBuf[nextIndex])
@@ -355,6 +361,8 @@ func (r *Rdb) LoadZipListEntry(setBuf string, curIndex *int) (string, error) {
 		*curIndex = nextIndex
 
 		return strconv.FormatInt(int64(binary.LittleEndian.Uint64(valBuf)), 10), nil
+	case specialFlag>>4 == ZIP_INT_4B:
+		return strconv.FormatInt(int64(specialFlag&0x0f)-1, 10), nil
 	}
 
 	return "", fmt.Errorf("unknown ziplist specialFlag: %d", specialFlag)
@@ -406,6 +414,7 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 			return "", err
 		}
 
+		fmt.Printf("len: %d\n", len(encodedStr))
 		setSize, err := r.LoadZSetSize(encodedStr)
 		if err != nil {
 			return "", err
@@ -435,6 +444,37 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 		}
 
 		fmt.Printf("decodeStr: %s", decodeStr)
+
+		return decodeStr, nil
+	} else if objType == RDB_TYPE_HASH_ZIPLIST {
+		r.rdbType = RDB_TYPE_HASH_ZIPLIST
+		encodedStr, err := r.LoadStringObject()
+		if err != nil {
+			fmt.Println("Fail to load string")
+			return "", err
+		}
+
+		hashSize, err := r.LoadZSetSize(encodedStr)
+		if err != nil {
+			return "", err
+		}
+
+		hashSize /= 2
+		curIndex := 10
+		decodeStr := ""
+		for i := int64(0); i < hashSize; i++ {
+			hashField, err := r.LoadZipListEntry(encodedStr, &curIndex)
+			if err != nil {
+				return "", err
+			}
+
+			hashValue, err := r.LoadZipListEntry(encodedStr, &curIndex)
+			if err != nil {
+				return "", err
+			}
+
+			decodeStr += fmt.Sprintf("%s => %s ; ", hashField, string(hashValue))
+		}
 
 		return decodeStr, nil
 	} else if objType == RDB_TYPE_SET_INTSET {
