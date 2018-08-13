@@ -205,13 +205,22 @@ func (r *Rdb) LoadLen(isEncoded *bool) (int, error) {
 	} else if lenType == RDB_6BITLEN {
 		return int(lenBuf[0]) & 0x3F, nil
 	} else if lenType == RDB_14BITLEN {
+		/* Read a 14 bit len */
 		buf, err := r.ReadBuf(1)
 		if err != nil {
 			return 0, err
 		}
 		return (int(lenBuf[0])&0x3F)<<8 | int(buf[0]), nil
+	} else if lenBuf[0] == RDB_32BITLEN {
+		/* Read a 32 bit len. */
+		buf, err := r.ReadBuf(4)
+		if err != nil {
+			return 0, err
+		}
+
+		return int(binary.BigEndian.Uint32(buf)), nil
 	} else {
-		fmt.Printf("Unknown length encoding %d in rdbLoadLen()\n", lenType)
+		fmt.Printf("Unknown length encoding %d in LoadLen()\n", lenType)
 		return -1, errors.New("Unknown length encoding")
 	}
 
@@ -361,6 +370,7 @@ func (r *Rdb) LoadZipListEntry(setBuf string, curIndex *int) (string, error) {
 }
 
 func (r *Rdb) LoadObject(objType byte) (string, error) {
+	r.rdbType = int(objType)
 	if objType == RDB_TYPE_STRING {
 		strVal, err := r.LoadStringObject()
 		if err != nil {
