@@ -497,6 +497,29 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 		fmt.Printf("INTSET encoded :%s\n", encodedStr)
 
 		return "", nil
+	} else if objType == RDB_TYPE_SET {
+		objLen, err := r.LoadLen(nil)
+		if err != nil {
+			fmt.Println("Fail to load hash object len")
+			return "", err
+		}
+
+		i := 0
+		for {
+			if i >= objLen {
+				break
+			}
+			element, err := r.LoadStringObject()
+			if err != nil {
+				return "", err
+			}
+
+			fmt.Printf("element: %s\n", element)
+
+			i++
+		}
+
+		return "", nil
 	} else {
 		fmt.Printf("object type %d\n", objType)
 		return "", nil
