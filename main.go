@@ -379,7 +379,8 @@ func (r *Rdb) LoadZipListEntry(setBuf string, curIndex *int) (string, error) {
 
 func (r *Rdb) LoadObject(objType byte) (string, error) {
 	r.rdbType = int(objType)
-	if objType == RDB_TYPE_STRING {
+	switch objType {
+	case RDB_TYPE_STRING:
 		strVal, err := r.LoadStringObject()
 		if err != nil {
 			fmt.Println("Fail to load string object")
@@ -387,7 +388,7 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 		}
 
 		return strVal, nil
-	} else if objType == RDB_TYPE_HASH {
+	case RDB_TYPE_HASH:
 		objLen, err := r.LoadLen(nil)
 		if err != nil {
 			fmt.Println("Fail to load hash object len")
@@ -416,7 +417,7 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 		}
 
 		return "", nil
-	} else if objType == RDB_TYPE_ZSET_ZIPLIST {
+	case RDB_TYPE_ZSET_ZIPLIST:
 		r.rdbType = RDB_TYPE_ZSET_ZIPLIST
 		encodedStr, err := r.LoadStringObject()
 		if err != nil {
@@ -424,7 +425,6 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 			return "", err
 		}
 
-		fmt.Printf("len: %d\n", len(encodedStr))
 		setSize, err := r.LoadZSetSize(encodedStr)
 		if err != nil {
 			return "", err
@@ -456,7 +456,7 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 		fmt.Printf("decodeStr: %s", decodeStr)
 
 		return decodeStr, nil
-	} else if objType == RDB_TYPE_HASH_ZIPLIST {
+	case RDB_TYPE_HASH_ZIPLIST:
 		r.rdbType = RDB_TYPE_HASH_ZIPLIST
 		encodedStr, err := r.LoadStringObject()
 		if err != nil {
@@ -487,7 +487,7 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 		}
 
 		return decodeStr, nil
-	} else if objType == RDB_TYPE_SET_INTSET {
+	case RDB_TYPE_SET_INTSET:
 		encodedStr, err := r.LoadStringObject()
 		if err != nil {
 			fmt.Println("Fail to load string")
@@ -497,7 +497,7 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 		fmt.Printf("INTSET encoded :%s\n", encodedStr)
 
 		return "", nil
-	} else if objType == RDB_TYPE_SET {
+	case RDB_TYPE_SET:
 		objLen, err := r.LoadLen(nil)
 		if err != nil {
 			fmt.Println("Fail to load hash object len")
@@ -520,8 +520,9 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 		}
 
 		return "", nil
-	} else {
+	default:
 		fmt.Printf("object type %d\n", objType)
+		os.Exit(-1)
 		return "", nil
 	}
 }
