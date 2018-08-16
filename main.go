@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 )
@@ -377,6 +378,47 @@ func (r *Rdb) LoadZipListEntry(setBuf string, curIndex *int) (string, error) {
 	return "", fmt.Errorf("unknown ziplist specialFlag: %d", specialFlag)
 }
 
+func (r *Rdb) LoadDoubleValue() (float64, error) {
+	lenBuf, err := r.ReadBuf(1)
+	if err != nil {
+		return 0, err
+	}
+
+	length := int(lenBuf[0])
+
+	switch length {
+	case 253:
+		return math.NaN(), nil
+	case 254:
+		return math.Inf(0), nil
+	case 255:
+		return math.Inf(-1), nil
+	default:
+		floatBuf, err := r.ReadBuf(int64(length))
+		if err != nil {
+			return 0, err
+		}
+
+		floatVal, err := strconv.ParseFloat(string(floatBuf), 64)
+
+		return floatVal, err
+	}
+}
+
+func (r *Rdb) LoadBinaryDoubleValue() (float64, error) {
+	floatBuf, err := r.ReadBuf(int64(8))
+	if err != nil {
+		fmt.Println("Fail to read buf in load binary double value")
+		return 0, err
+	}
+
+	bufByte := []byte(floatBuf)
+	floatBit := binary.LittleEndian.Uint64(bufByte)
+	floatVal := math.Float64frombits(floatBit)
+
+	return floatVal, err
+}
+
 func (r *Rdb) LoadObject(objType byte) (string, error) {
 	r.rdbType = int(objType)
 	switch objType {
@@ -517,6 +559,40 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 			fmt.Printf("element: %s\n", element)
 
 			i++
+		}
+
+		return "", nil
+	case RDB_TYPE_ZSET, RDB_TYPE_ZSET_2:
+		zsetLen, err := r.LoadLen(nil)
+		if err != nil {
+			fmt.Println("Fail to load ZSET len")
+			return "", nil
+		}
+
+		i := 0
+		for {
+			if i >= zsetLen {
+				break
+			}
+
+			setMember, err := r.LoadStringObject()
+			if err != nil {
+				return "", err
+			}
+
+			var score float64
+			if objType == RDB_TYPE_ZSET_2 {
+				score, err = r.LoadBinaryDoubleValue()
+			} else {
+				score, err = r.LoadDoubleValue()
+			}
+
+			if err != nil {
+				return "", err
+			}
+			i++
+
+			fmt.Printf("member %s score %.2f\n", setMember, score)
 		}
 
 		return "", nil
