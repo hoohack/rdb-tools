@@ -199,12 +199,7 @@ func (r *Rdb) LoadLen(isEncoded *bool) (int, error) {
 	}
 
 	lenType := (lenBuf[0] & 0xC0) >> 6
-	if lenType == RDB_ENCVAL {
-		if isEncoded != nil {
-			*isEncoded = true
-		}
-		return int(lenBuf[0]) & 0x3F, nil
-	} else if lenType == RDB_6BITLEN {
+	if lenType == RDB_6BITLEN {
 		return int(lenBuf[0]) & 0x3F, nil
 	} else if lenType == RDB_14BITLEN {
 		/* Read a 14 bit len */
@@ -221,6 +216,11 @@ func (r *Rdb) LoadLen(isEncoded *bool) (int, error) {
 		}
 
 		return int(binary.BigEndian.Uint32(buf)), nil
+	} else if lenType == RDB_ENCVAL {
+		if isEncoded != nil {
+			*isEncoded = true
+		}
+		return int(lenBuf[0]) & 0x3F, nil
 	} else {
 		fmt.Printf("Unknown length encoding %d in LoadLen()\n", lenType)
 		return -1, errors.New("Unknown length encoding")
@@ -419,6 +419,41 @@ func (r *Rdb) LoadBinaryDoubleValue() (float64, error) {
 	return floatVal, err
 }
 
+func (r *Rdb) LoadZipList() (string, error) {
+	encodedStr, err := r.LoadStringObject()
+	if err != nil {
+		fmt.Println("Fail to load string")
+		return "", err
+	}
+
+	setSize, err := r.LoadZSetSize(encodedStr)
+	if err != nil {
+		return "", err
+	}
+
+	i := int64(0)
+	curIndex := 10
+	zipListStr := "ZipList Item : "
+	for {
+		if i >= setSize {
+			break
+		}
+
+		zipListValue, err := r.LoadZipListEntry(encodedStr, &curIndex)
+		if err != nil {
+			return "", err
+		}
+
+		zipListStr += zipListValue + " "
+
+		i++
+	}
+
+	zipListStr += "\n"
+
+	return zipListStr, nil
+}
+
 func (r *Rdb) LoadObject(objType byte) (string, error) {
 	r.rdbType = int(objType)
 	switch objType {
@@ -593,6 +628,32 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 			i++
 
 			fmt.Printf("member %s score %.2f\n", setMember, score)
+		}
+
+		return "", nil
+	case RDB_TYPE_LIST_QUICKLIST:
+		r.rdbType = RDB_TYPE_LIST_QUICKLIST
+		listLen, err := r.LoadLen(nil)
+		if err != nil {
+			fmt.Println("Fail to load QUICKLIST len")
+			return "", nil
+		}
+
+		i := 0
+		fmt.Printf("len: %d\n", listLen)
+		for {
+			if i >= listLen {
+				break
+			}
+
+			listVal, err := r.LoadZipList()
+			if err != nil {
+				return "", err
+			}
+
+			i++
+
+			fmt.Printf("list item: %s\n", listVal)
 		}
 
 		return "", nil
