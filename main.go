@@ -318,14 +318,15 @@ func (r *Rdb) LoadZipListEntry(setBuf string, curIndex *int) (string, error) {
 
 		return valBuf, nil
 	case specialFlag>>6 == ZIP_STR_14B:
-		nextIndex := *curIndex + 1
-		valBuf := byte(setBuf[nextIndex])
+		lenBuf := byte(setBuf[*curIndex])
 		*curIndex++
 
-		nextIndex = (int(specialFlag&0x3f) << 8) | int(valBuf)
+		nextIndex := (int(specialFlag&0x3f) << 8) | int(lenBuf)
+		valBuf := setBuf[*curIndex:nextIndex]
+
 		*curIndex = nextIndex
 
-		return setBuf[*curIndex:nextIndex], nil
+		return valBuf, nil
 	case specialFlag>>6 == ZIP_STR_32B:
 		nextIndex := *curIndex + 4
 		lenBuf := []byte(setBuf[*curIndex:nextIndex])
