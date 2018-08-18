@@ -321,7 +321,7 @@ func (r *Rdb) LoadZipListEntry(setBuf string, curIndex *int) (string, error) {
 		lenBuf := byte(setBuf[*curIndex])
 		*curIndex++
 
-		nextIndex := (int(specialFlag&0x3f) << 8) | int(lenBuf)
+		nextIndex := *curIndex + ((int(specialFlag&0x3f) << 8) | int(lenBuf))
 		valBuf := setBuf[*curIndex:nextIndex]
 
 		*curIndex = nextIndex
