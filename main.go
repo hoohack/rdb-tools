@@ -68,6 +68,7 @@ type Rdb struct {
 	expireTime  int64
 	fp          *os.File
 	rdbType     int
+	strObj      map[string]string
 }
 
 func checkErr(err error) {
@@ -80,6 +81,12 @@ func checkErr(err error) {
 func eofErr() {
 	fmt.Println("Unexpected EOF reading RDB file")
 	os.Exit(-1)
+}
+
+func (r *Rdb) saveStrObj(redisKey string, redisVal string) int {
+	r.strObj[redisKey] = redisVal
+
+	return len(r.strObj)
 }
 
 func (r *Rdb) ReadBuf(length int64) ([]byte, error) {
@@ -455,7 +462,7 @@ func (r *Rdb) LoadZipList() (string, error) {
 	return zipListStr, nil
 }
 
-func (r *Rdb) LoadObject(objType byte) (string, error) {
+func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 	r.rdbType = int(objType)
 	switch objType {
 	case RDB_TYPE_STRING:
@@ -464,6 +471,9 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 			fmt.Println("Fail to load string object")
 			return "", err
 		}
+
+		strObjLen := r.saveStrObj(redisKey, strVal)
+		fmt.Printf("cur Len:%d\n", strObjLen)
 
 		return strVal, nil
 	case RDB_TYPE_HASH:
@@ -641,7 +651,6 @@ func (r *Rdb) LoadObject(objType byte) (string, error) {
 		}
 
 		i := 0
-		fmt.Printf("len: %d\n", listLen)
 		for {
 			if i >= listLen {
 				break
@@ -672,8 +681,9 @@ func main() {
 		return
 	}
 
+	strObj := make(map[string]string)
 	defer file.Close()
-	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0}
+	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, strObj}
 
 	// check redis rdb file signature
 	buf, _ := rdb.ReadBuf(int64(9))
@@ -754,9 +764,10 @@ func main() {
 
 		redisKey, err := rdb.LoadStringObject()
 		checkErr(err)
+
 		fmt.Printf("key: %s\n", redisKey)
 
-		redisVal, err := rdb.LoadObject(redisType)
+		redisVal, err := rdb.LoadObject(redisKey, redisType)
 		checkErr(err)
 
 		fmt.Printf("%s: %s\n", redisKey, redisVal)
