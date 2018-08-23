@@ -69,6 +69,7 @@ type Rdb struct {
 	fp          *os.File
 	rdbType     int
 	strObj      map[string]string
+	hashObj     map[string]map[string]string
 }
 
 func checkErr(err error) {
@@ -87,6 +88,16 @@ func (r *Rdb) saveStrObj(redisKey string, redisVal string) int {
 	r.strObj[redisKey] = redisVal
 
 	return len(r.strObj)
+}
+
+func (r *Rdb) setHash(hashKey string, hashField string, hashValue string) {
+	item, ok := r.hashObj[hashKey]
+	if !ok {
+		item = make(map[string]string)
+		r.hashObj[hashKey] = item
+	}
+
+	item[hashField] = hashValue
 }
 
 func (r *Rdb) ReadBuf(length int64) ([]byte, error) {
@@ -500,6 +511,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				return "", err
 			}
 
+			r.setHash(redisKey, hashField, hashValue)
 			fmt.Printf("%s => %s\n", hashField, hashValue)
 			i++
 		}
@@ -571,6 +583,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				return "", err
 			}
 
+			r.setHash(redisKey, hashField, hashValue)
 			decodeStr += fmt.Sprintf("%s => %s ; ", hashField, string(hashValue))
 		}
 
@@ -682,8 +695,9 @@ func main() {
 	}
 
 	strObj := make(map[string]string)
+	hashObj := make(map[string]map[string]string)
 	defer file.Close()
-	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, strObj}
+	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, strObj, hashObj}
 
 	// check redis rdb file signature
 	buf, _ := rdb.ReadBuf(int64(9))
