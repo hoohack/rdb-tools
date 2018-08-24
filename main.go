@@ -70,6 +70,7 @@ type Rdb struct {
 	rdbType     int
 	strObj      map[string]string
 	hashObj     map[string]map[string]string
+	listObj     map[string][]string
 }
 
 func checkErr(err error) {
@@ -98,6 +99,18 @@ func (r *Rdb) setHash(hashKey string, hashField string, hashValue string) {
 	}
 
 	item[hashField] = hashValue
+}
+
+func (r *Rdb) appendList(listKey string, listVal string) {
+	item, ok := r.listObj[listKey]
+	if !ok {
+		item = make([]string, 0)
+		r.listObj[listKey] = item
+	}
+
+	// prepend
+	item = append([]string{listVal}, item...)
+	r.listObj[listKey] = item
 }
 
 func (r *Rdb) ReadBuf(length int64) ([]byte, error) {
@@ -438,7 +451,7 @@ func (r *Rdb) LoadBinaryDoubleValue() (float64, error) {
 	return floatVal, err
 }
 
-func (r *Rdb) LoadZipList() (string, error) {
+func (r *Rdb) LoadZipList(redisKey string) (string, error) {
 	encodedStr, err := r.LoadStringObject()
 	if err != nil {
 		fmt.Println("Fail to load string")
@@ -463,6 +476,7 @@ func (r *Rdb) LoadZipList() (string, error) {
 			return "", err
 		}
 
+		r.appendList(redisKey, zipListValue)
 		zipListStr += zipListValue + " "
 
 		i++
@@ -669,7 +683,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				break
 			}
 
-			listVal, err := r.LoadZipList()
+			listVal, err := r.LoadZipList(redisKey)
 			if err != nil {
 				return "", err
 			}
@@ -696,8 +710,9 @@ func main() {
 
 	strObj := make(map[string]string)
 	hashObj := make(map[string]map[string]string)
+	listObj := make(map[string][]string)
 	defer file.Close()
-	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, strObj, hashObj}
+	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, strObj, hashObj, listObj}
 
 	// check redis rdb file signature
 	buf, _ := rdb.ReadBuf(int64(9))
