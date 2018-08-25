@@ -71,6 +71,7 @@ type Rdb struct {
 	strObj      map[string]string
 	hashObj     map[string]map[string]string
 	listObj     map[string][]string
+	zsetObj     map[string]map[string]float64
 }
 
 func checkErr(err error) {
@@ -111,6 +112,16 @@ func (r *Rdb) appendList(listKey string, listVal string) {
 	// prepend
 	item = append([]string{listVal}, item...)
 	r.listObj[listKey] = item
+}
+
+func (r *Rdb) setZset(zsetKey string, member string, score float64) {
+	item, ok := r.zsetObj[zsetKey]
+	if !ok {
+		item = make(map[string]float64)
+		r.zsetObj[zsetKey] = item
+	}
+
+	item[member] = score
 }
 
 func (r *Rdb) ReadBuf(length int64) ([]byte, error) {
@@ -564,6 +575,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				return "", err
 			}
 
+			r.setZset(redisKey, member, scoreVal)
 			decodeStr += fmt.Sprintf("%s => %.0f ; ", member, scoreVal)
 		}
 
@@ -663,6 +675,8 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 			if err != nil {
 				return "", err
 			}
+
+			r.setZset(redisKey, setMember, score)
 			i++
 
 			fmt.Printf("member %s score %.2f\n", setMember, score)
@@ -711,8 +725,9 @@ func main() {
 	strObj := make(map[string]string)
 	hashObj := make(map[string]map[string]string)
 	listObj := make(map[string][]string)
+	zsetObj := make(map[string]map[string]float64)
 	defer file.Close()
-	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, strObj, hashObj, listObj}
+	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, strObj, hashObj, listObj, zsetObj}
 
 	// check redis rdb file signature
 	buf, _ := rdb.ReadBuf(int64(9))
