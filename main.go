@@ -59,6 +59,11 @@ const ZIP_INT_24B = 0xF0
 const ZIP_INT_8B = 0xfe
 const ZIP_INT_4B = 15
 
+type RedisObject struct {
+	objType int
+	objVal  interface{}
+}
+
 type Rdb struct {
 	curIndex    int64
 	version     int
@@ -68,11 +73,7 @@ type Rdb struct {
 	expireTime  int64
 	fp          *os.File
 	rdbType     int
-	strObj      map[string]string
-	hashObj     map[string]map[string]string
-	listObj     map[string][]string
-	zsetObj     map[string]map[string]float64
-	setObj      map[string]map[string]int
+	mapObj      map[string]*RedisObject
 }
 
 func checkErr(err error) {
@@ -87,52 +88,59 @@ func eofErr() {
 	os.Exit(-1)
 }
 
-func (r *Rdb) saveStrObj(redisKey string, redisVal string) int {
-	r.strObj[redisKey] = redisVal
-
-	return len(r.strObj)
+func NewRedisObject(objType int, objVal interface{}) *RedisObject {
+	return &RedisObject{objType, objVal}
 }
 
-func (r *Rdb) setHash(hashKey string, hashField string, hashValue string) {
-	item, ok := r.hashObj[hashKey]
-	if !ok {
-		item = make(map[string]string)
-		r.hashObj[hashKey] = item
+func (r *Rdb) saveStrObj(redisKey string, strVal string) {
+	redisObj := NewRedisObject(RDB_TYPE_STRING, strVal)
+	r.mapObj[redisKey] = redisObj
+}
+
+func (r *Rdb) saveHash(hashKey string, hashField string, hashValue string) {
+	item := r.mapObj[hashKey]
+	if item == nil {
+		tmpMap := make(map[string]string)
+		item = NewRedisObject(RDB_TYPE_HASH, tmpMap)
+		r.mapObj[hashKey] = item
 	}
 
-	item[hashField] = hashValue
+	item.objVal.(map[string]string)[hashField] = hashValue
 }
 
-func (r *Rdb) appendList(listKey string, listVal string) {
-	item, ok := r.listObj[listKey]
-	if !ok {
-		item = make([]string, 0)
-		r.listObj[listKey] = item
+func (r *Rdb) saveListVal(listKey string, listVal string) {
+	item := r.mapObj[listKey]
+	if item == nil {
+		tmpList := make([]string, 0)
+		item = NewRedisObject(RDB_TYPE_LIST, tmpList)
+		r.mapObj[listKey] = item
 	}
 
 	// prepend
-	item = append([]string{listVal}, item...)
-	r.listObj[listKey] = item
+	item.objVal = append([]string{listVal}, item.objVal.([]string)...)
+	r.mapObj[listKey] = item
 }
 
-func (r *Rdb) setZset(zsetKey string, member string, score float64) {
-	item, ok := r.zsetObj[zsetKey]
-	if !ok {
-		item = make(map[string]float64)
-		r.zsetObj[zsetKey] = item
+func (r *Rdb) saveZset(zsetKey string, member string, score float64) {
+	item := r.mapObj[zsetKey]
+	if item == nil {
+		tmpZset := make(map[string]float64)
+		item = NewRedisObject(RDB_TYPE_ZSET, tmpZset)
+		r.mapObj[zsetKey] = item
 	}
 
-	item[member] = score
+	item.objVal.(map[string]float64)[member] = score
 }
 
-func (r *Rdb) saveSetElement(setKey string, element string) {
-	item, ok := r.setObj[setKey]
-	if !ok {
-		item = make(map[string]int)
-		r.setObj[setKey] = item
+func (r *Rdb) saveSet(setKey string, element string) {
+	item := r.mapObj[setKey]
+	if item == nil {
+		tmpSet := make(map[string]int)
+		item = NewRedisObject(RDB_TYPE_SET, tmpSet)
+		r.mapObj[setKey] = item
 	}
 
-	item[setKey] = 1
+	item.objVal.(map[string]int)[setKey] = 1
 }
 
 func (r *Rdb) ReadBuf(length int64) ([]byte, error) {
@@ -498,7 +506,7 @@ func (r *Rdb) LoadZipList(redisKey string) (string, error) {
 			return "", err
 		}
 
-		r.appendList(redisKey, zipListValue)
+		r.saveListVal(redisKey, zipListValue)
 		zipListStr += zipListValue + " "
 
 		i++
@@ -519,8 +527,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 			return "", err
 		}
 
-		strObjLen := r.saveStrObj(redisKey, strVal)
-		fmt.Printf("cur Len:%d\n", strObjLen)
+		r.saveStrObj(redisKey, strVal)
 
 		return strVal, nil
 	case RDB_TYPE_HASH:
@@ -547,7 +554,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				return "", err
 			}
 
-			r.setHash(redisKey, hashField, hashValue)
+			r.saveHash(redisKey, hashField, hashValue)
 			fmt.Printf("%s => %s\n", hashField, hashValue)
 			i++
 		}
@@ -586,7 +593,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				return "", err
 			}
 
-			r.setZset(redisKey, member, scoreVal)
+			r.saveZset(redisKey, member, scoreVal)
 			decodeStr += fmt.Sprintf("%s => %.0f ; ", member, scoreVal)
 		}
 
@@ -620,7 +627,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				return "", err
 			}
 
-			r.setHash(redisKey, hashField, hashValue)
+			r.saveHash(redisKey, hashField, hashValue)
 			decodeStr += fmt.Sprintf("%s => %s ; ", hashField, string(hashValue))
 		}
 
@@ -652,7 +659,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				return "", err
 			}
 
-			r.saveSetElement(redisKey, element)
+			r.saveSet(redisKey, element)
 			fmt.Printf("element: %s\n", element)
 
 			i++
@@ -688,7 +695,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				return "", err
 			}
 
-			r.setZset(redisKey, setMember, score)
+			r.saveZset(redisKey, setMember, score)
 			i++
 
 			fmt.Printf("member %s score %.2f\n", setMember, score)
@@ -734,13 +741,9 @@ func main() {
 		return
 	}
 
-	strObj := make(map[string]string)
-	hashObj := make(map[string]map[string]string)
-	listObj := make(map[string][]string)
-	zsetObj := make(map[string]map[string]float64)
-	setObj := make(map[string]map[string]int)
+	mapObj := make(map[string]*RedisObject)
 	defer file.Close()
-	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, strObj, hashObj, listObj, zsetObj, setObj}
+	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, mapObj}
 
 	// check redis rdb file signature
 	buf, _ := rdb.ReadBuf(int64(9))
