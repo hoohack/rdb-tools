@@ -98,8 +98,8 @@ func (r *Rdb) saveStrObj(redisKey string, strVal string) {
 }
 
 func (r *Rdb) saveHash(hashKey string, hashField string, hashValue string) {
-	item := r.mapObj[hashKey]
-	if item == nil {
+	item, ok := r.mapObj[hashKey]
+	if !ok {
 		tmpMap := make(map[string]string)
 		item = NewRedisObject(RDB_TYPE_HASH, tmpMap)
 		r.mapObj[hashKey] = item
@@ -109,8 +109,8 @@ func (r *Rdb) saveHash(hashKey string, hashField string, hashValue string) {
 }
 
 func (r *Rdb) saveListVal(listKey string, listVal string) {
-	item := r.mapObj[listKey]
-	if item == nil {
+	item, ok := r.mapObj[listKey]
+	if !ok {
 		tmpList := make([]string, 0)
 		item = NewRedisObject(RDB_TYPE_LIST, tmpList)
 		r.mapObj[listKey] = item
@@ -122,8 +122,8 @@ func (r *Rdb) saveListVal(listKey string, listVal string) {
 }
 
 func (r *Rdb) saveZset(zsetKey string, member string, score float64) {
-	item := r.mapObj[zsetKey]
-	if item == nil {
+	item, ok := r.mapObj[zsetKey]
+	if !ok {
 		tmpZset := make(map[string]float64)
 		item = NewRedisObject(RDB_TYPE_ZSET, tmpZset)
 		r.mapObj[zsetKey] = item
@@ -133,8 +133,8 @@ func (r *Rdb) saveZset(zsetKey string, member string, score float64) {
 }
 
 func (r *Rdb) saveSet(setKey string, element string) {
-	item := r.mapObj[setKey]
-	if item == nil {
+	item, ok := r.mapObj[setKey]
+	if !ok {
 		tmpSet := make(map[string]int)
 		item = NewRedisObject(RDB_TYPE_SET, tmpSet)
 		r.mapObj[setKey] = item
