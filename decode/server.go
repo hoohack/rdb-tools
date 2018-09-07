@@ -1,11 +1,17 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
+	"strconv"
 	"strings"
 )
+
+const PageSize = 1
+const Success = 0
 
 /*
 * 判断路径是否存在
@@ -25,16 +31,69 @@ type rdbHandler struct {
 	rdb *Rdb
 }
 
-func (rh *rdbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (rh *rdbHandler) MakeReturnData(code int, errMsg string, data interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	result["code"] = code
+	result["errMsg"] = errMsg
+	result["data"] = data
+
+	return result
+}
+
+/*
+* 获取所有的key列表
+* @param page int
+* @return []byte
+ */
+func (rh *rdbHandler) getAllKeys(page int) []string {
 	var keysArr []string
 	rdb := rh.rdb
 	for k, _ := range rdb.mapObj {
 		keysArr = append(keysArr, k)
 	}
 
-	fmt.Printf("rdb keys *: %s\n", strings.Join(keysArr, " "))
-	fmt.Printf("url: %s\n", r.URL)
-	fmt.Printf("method: %s\n", r.Method)
+	sort.Strings(keysArr)
+
+	var retArr []string
+	if page == 0 {
+		retArr = keysArr
+	}
+
+	offset := ((page - 1) * PageSize)
+	if offset < len(keysArr) {
+		nextPos := offset + PageSize
+		if nextPos > len(keysArr) {
+			nextPos = len(keysArr)
+		}
+		retArr = keysArr[offset:nextPos]
+	}
+
+	return retArr
+}
+
+func (rh *rdbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	urlArr := strings.Split(r.URL.Path, "/")
+	apiName := urlArr[1]
+	switch apiName {
+	case "keys":
+		var page int = 1
+		if len(urlArr) > 2 {
+			page, err := strconv.Atoi(urlArr[1])
+			if err != nil {
+				fmt.Printf("convert string to int failed, page: %s", page)
+				return
+			}
+		}
+		arrKeys := rh.getAllKeys(page)
+		result := rh.MakeReturnData(Success, "", arrKeys)
+		response, err := json.MarshalIndent(result, "", " ")
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Fprintf(w, string(response))
+		break
+	}
 }
 
 func main() {
@@ -66,7 +125,8 @@ func main() {
 
 	fmt.Println("Listening on 5763...")
 	// 启动服务，监听请求
-	http.Handle("/", &rdbHandler{rdb})
+	http.Handle("/keys", &rdbHandler{rdb})
+
 	err = http.ListenAndServe(":5763", nil)
 	if err != nil {
 		fmt.Printf("start server failed, errmsg: %s\n", err)
