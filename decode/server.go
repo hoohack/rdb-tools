@@ -7,10 +7,11 @@ import (
 	"os"
 	"sort"
 	"strconv"
-	"strings"
+
+	"github.com/gorilla/mux"
 )
 
-const PageSize = 1
+const PageSize = 5
 const Success = 0
 
 /*
@@ -27,11 +28,18 @@ func PathExists(path string) bool {
 	return false
 }
 
-type rdbHandler struct {
+type RdbHandler struct {
 	rdb *Rdb
 }
 
-func (rh *rdbHandler) MakeReturnData(code int, errMsg string, data interface{}) map[string]interface{} {
+/*
+ * 构造返回参数
+ * @param code   int
+ * @param errMsg string
+ * @param data   interface
+ * @return map[string]interface{}
+ */
+func (rh *RdbHandler) MakeReturnData(code int, errMsg string, data interface{}) map[string]interface{} {
 	result := make(map[string]interface{})
 	result["code"] = code
 	result["errMsg"] = errMsg
@@ -42,10 +50,8 @@ func (rh *rdbHandler) MakeReturnData(code int, errMsg string, data interface{}) 
 
 /*
 * 获取所有的key列表
-* @param page int
-* @return []byte
  */
-func (rh *rdbHandler) getAllKeys(page int) []string {
+func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 	var keysArr []string
 	rdb := rh.rdb
 	for k, _ := range rdb.mapObj {
@@ -54,10 +60,17 @@ func (rh *rdbHandler) getAllKeys(page int) []string {
 
 	sort.Strings(keysArr)
 
-	var retArr []string
-	if page == 0 {
-		retArr = keysArr
+	var page int = 1
+	vars := mux.Vars(r)
+	pageVar, ok := vars["page"]
+	if ok {
+		page, err := strconv.Atoi(pageVar)
+		if err != nil {
+			fmt.Printf("convert string to int failed, page: %s", page)
+			return
+		}
 	}
+	var retArr []string
 
 	offset := ((page - 1) * PageSize)
 	if offset < len(keysArr) {
@@ -68,32 +81,13 @@ func (rh *rdbHandler) getAllKeys(page int) []string {
 		retArr = keysArr[offset:nextPos]
 	}
 
-	return retArr
-}
-
-func (rh *rdbHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	urlArr := strings.Split(r.URL.Path, "/")
-	apiName := urlArr[1]
-	switch apiName {
-	case "keys":
-		var page int = 1
-		if len(urlArr) > 2 {
-			page, err := strconv.Atoi(urlArr[1])
-			if err != nil {
-				fmt.Printf("convert string to int failed, page: %s", page)
-				return
-			}
-		}
-		arrKeys := rh.getAllKeys(page)
-		result := rh.MakeReturnData(Success, "", arrKeys)
-		response, err := json.MarshalIndent(result, "", " ")
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Fprintf(w, string(response))
-		break
+	result := rh.MakeReturnData(Success, "", retArr)
+	response, err := json.MarshalIndent(result, "", " ")
+	if err != nil {
+		panic(err)
 	}
+
+	fmt.Fprintf(w, string(response))
 }
 
 func main() {
@@ -122,12 +116,15 @@ func main() {
 	defer file.Close()
 	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, mapObj}
 	rdb.DecodeRDBFile()
+	rh := &RdbHandler{rdb}
 
 	fmt.Println("Listening on 5763...")
-	// 启动服务，监听请求
-	http.Handle("/keys", &rdbHandler{rdb})
+	// 设置路由函数规则
+	router := mux.NewRouter().StrictSlash(true)
+	router.HandleFunc("/keys/{page}", rh.getAllKeys)
 
-	err = http.ListenAndServe(":5763", nil)
+	// 启动服务，监听请求
+	err = http.ListenAndServe(":5763", router)
 	if err != nil {
 		fmt.Printf("start server failed, errmsg: %s\n", err)
 	}
