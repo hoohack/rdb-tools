@@ -33,19 +33,12 @@ type RdbHandler struct {
 }
 
 /*
- * 构造返回参数
- * @param code   int
- * @param errMsg string
- * @param data   interface
- * @return map[string]interface{}
+ * 接口返回数据结构定义
  */
-func (rh *RdbHandler) MakeReturnData(code int, errMsg string, data interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
-	result["code"] = code
-	result["errMsg"] = errMsg
-	result["data"] = data
-
-	return result
+type ReturnResult struct {
+	Code   int         `json:"code"`
+	ErrMsg string      `json:"errMsg"`
+	Data   interface{} `json:"data"`
 }
 
 /*
@@ -81,7 +74,7 @@ func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 		retArr = keysArr[offset:nextPos]
 	}
 
-	result := rh.MakeReturnData(Success, "", retArr)
+	result := &ReturnResult{Success, "", retArr}
 	response, err := json.MarshalIndent(result, "", " ")
 	if err != nil {
 		panic(err)
