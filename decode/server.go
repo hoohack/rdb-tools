@@ -33,7 +33,7 @@ type RdbHandler struct {
 }
 
 /*
- * 接口返回数据结构定义
+ * API 返回结果数据结构定义
  */
 type ReturnResult struct {
 	Code   int         `json:"code"`
@@ -42,7 +42,7 @@ type ReturnResult struct {
 }
 
 /*
-* 获取所有的key列表
+ * 获取所有的key列表
  */
 func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 	var keysArr []string
@@ -115,6 +115,11 @@ func main() {
 	// 设置路由函数规则
 	router := mux.NewRouter().StrictSlash(true)
 	router.HandleFunc("/keys/{page}", rh.getAllKeys)
+
+	// 静态资源路由
+	router.Handle("/", http.FileServer(http.Dir("./www")))
+	router.Handle("/css/{rest}", http.StripPrefix("/css/", http.FileServer(http.Dir("./www/css/"))))
+	router.Handle("/js/{rest}", http.StripPrefix("/js/", http.FileServer(http.Dir("./www/js/"))))
 
 	// 启动服务，监听请求
 	err = http.ListenAndServe(":5763", router)
