@@ -13,6 +13,7 @@ import (
 
 const PageSize = 5
 const Success = 0
+const KeyNotExists = 1000
 
 /*
 * 判断路径是否存在
@@ -83,6 +84,34 @@ func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, string(response))
 }
 
+/*
+ * 获取某个key
+ * @param key
+ */
+func (rh *RdbHandler) getKey(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	keyVar, ok := vars["key"]
+	if !ok {
+
+	}
+
+	var result *ReturnResult
+	rdb := rh.rdb
+	ret, ok := rdb.mapObj[keyVar]
+	if ok {
+		result = &ReturnResult{Success, "", ret.objVal}
+	} else {
+		result = &ReturnResult{KeyNotExists, fmt.Sprintf("key %s not exists", keyVar), nil}
+	}
+
+	response, err := json.MarshalIndent(result, "", " ")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Fprintf(w, string(response))
+}
+
 func main() {
 	// 获取文件路径
 	argLen := len(os.Args)
@@ -115,6 +144,7 @@ func main() {
 	// 设置路由函数规则
 	router := mux.NewRouter().StrictSlash(true)
 	router.HandleFunc("/keys/{page}", rh.getAllKeys)
+	router.HandleFunc("/key/{key}", rh.getKey)
 
 	// 静态资源路由
 	router.Handle("/", http.FileServer(http.Dir("./www")))
