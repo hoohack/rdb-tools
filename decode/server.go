@@ -33,8 +33,14 @@ type RdbHandler struct {
 	rdb *Rdb
 }
 
+type RetData struct {
+	Type     int         `json:"type"`
+	TypeName string      `json:"typeName"`
+	Val      interface{} `json:"val"`
+}
+
 /*
- * API 返回结果数据结构定义
+* API 返回结果数据结构定义
  */
 type ReturnResult struct {
 	Code   int         `json:"code"`
@@ -43,7 +49,7 @@ type ReturnResult struct {
 }
 
 /*
- * 获取所有的key列表
+* 获取所有的key列表
  */
 func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 	var keysArr []string
@@ -85,8 +91,8 @@ func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 }
 
 /*
- * 获取某个key
- * @param key
+* 获取某个key
+* @param key
  */
 func (rh *RdbHandler) getKey(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -99,7 +105,16 @@ func (rh *RdbHandler) getKey(w http.ResponseWriter, r *http.Request) {
 	rdb := rh.rdb
 	ret, ok := rdb.mapObj[keyVar]
 	if ok {
-		result = &ReturnResult{Success, "", ret.objVal}
+		typeMap := map[int]string{
+			0: "string",
+			1: "list",
+			2: "set",
+			3: "zset",
+			4: "hash",
+			5: "zset",
+		}
+		retData := &RetData{ret.objType, typeMap[ret.objType], ret.objVal}
+		result = &ReturnResult{Success, "", retData}
 	} else {
 		result = &ReturnResult{KeyNotExists, fmt.Sprintf("key %s not exists", keyVar), nil}
 	}

@@ -53,11 +53,12 @@
 		</div>
 
 		<div id="detail-content" style="display: none">
-			<h2 id="key-detail-head">keys detail</h2>
+			<h2 id="key-detail-head">key detail</h2>
 			<table id="key-detail-table" class="table table-bordered">
 				<thead>
 				<th scope="col">键名</th>
 				<th scope="col">键值</th>
+                                <th scope="col">类型</th>
 				</thead>
 				<tbody>
 				</tbody>
@@ -91,8 +92,10 @@
 		    $(".key").click(function(e) {
 			$("#list-content").hide();
 			var keyValue = $(this).text();
+                        $("#key-detail-table").find("tbody").html("");
 			$.getJSON("/key/" + keyValue, function(rspData) {
-				var trData = "<tr><td>" + keyValue + "</td><td>" + rspData["data"] + "</td></tr>";
+                                var realData = rspData["data"];
+                                var trData = "<tr><td>" + keyValue + "</td><td>" + realData["val"] + "</td><td>" + realData["typeName"] + "</tr>";
 				$("#key-detail-table").find("tbody").append(trData);
 				$("#detail-content").show();
 			});
