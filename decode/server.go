@@ -36,6 +36,7 @@ type RdbHandler struct {
 type RetData struct {
 	Type     int         `json:"type"`
 	TypeName string      `json:"typeName"`
+	Length   int         `json:"length"`
 	Val      interface{} `json:"val"`
 }
 
@@ -113,7 +114,7 @@ func (rh *RdbHandler) getKey(w http.ResponseWriter, r *http.Request) {
 			4: "hash",
 			5: "zset",
 		}
-		retData := &RetData{ret.objType, typeMap[ret.objType], ret.objVal}
+		retData := &RetData{ret.objType, typeMap[ret.objType], ret.objLen, ret.objVal}
 		result = &ReturnResult{Success, "", retData}
 	} else {
 		result = &ReturnResult{KeyNotExists, fmt.Sprintf("key %s not exists", keyVar), nil}
@@ -151,7 +152,7 @@ func main() {
 
 	mapObj := make(map[string]*RedisObject)
 	defer file.Close()
-	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, mapObj}
+	rdb := &Rdb{int64(0), 0, 0, 0, 0, 0, file, 0, mapObj, 0}
 	rdb.DecodeRDBFile()
 	rh := &RdbHandler{rdb}
 

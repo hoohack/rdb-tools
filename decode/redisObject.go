@@ -7,6 +7,7 @@ package main
  */
 type RedisObject struct {
 	objType int
+	objLen  int
 	objVal  interface{}
 }
 

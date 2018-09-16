@@ -69,6 +69,7 @@ type Rdb struct {
 	fp          *os.File
 	rdbType     int
 	mapObj      map[string]*RedisObject
+	loadingLen  int
 }
 
 func checkErr(err error) {
@@ -79,7 +80,7 @@ func checkErr(err error) {
 }
 
 func (r *Rdb) saveStrObj(redisKey string, strVal string) {
-	redisObj := NewRedisObject(RDB_TYPE_STRING, strVal)
+	redisObj := NewRedisObject(RDB_TYPE_STRING, r.loadingLen, strVal)
 	r.mapObj[redisKey] = redisObj
 }
 
@@ -87,7 +88,7 @@ func (r *Rdb) saveHash(hashKey string, hashField string, hashValue string) {
 	item, ok := r.mapObj[hashKey]
 	if !ok {
 		tmpMap := make(map[string]string)
-		item = NewRedisObject(RDB_TYPE_HASH, tmpMap)
+		item = NewRedisObject(RDB_TYPE_HASH, 0, tmpMap)
 		r.mapObj[hashKey] = item
 	}
 
@@ -98,7 +99,7 @@ func (r *Rdb) saveListVal(listKey string, listVal string) {
 	item, ok := r.mapObj[listKey]
 	if !ok {
 		tmpList := make([]string, 0)
-		item = NewRedisObject(RDB_TYPE_LIST, tmpList)
+		item = NewRedisObject(RDB_TYPE_LIST, 0, tmpList)
 		r.mapObj[listKey] = item
 	}
 
@@ -111,7 +112,7 @@ func (r *Rdb) saveZset(zsetKey string, member string, score float64) {
 	item, ok := r.mapObj[zsetKey]
 	if !ok {
 		tmpZset := make(map[string]float64)
-		item = NewRedisObject(RDB_TYPE_ZSET, tmpZset)
+		item = NewRedisObject(RDB_TYPE_ZSET, 0, tmpZset)
 		r.mapObj[zsetKey] = item
 	}
 
@@ -122,7 +123,7 @@ func (r *Rdb) saveSet(setKey string, element string) {
 	item, ok := r.mapObj[setKey]
 	if !ok {
 		tmpSet := make(map[string]int)
-		item = NewRedisObject(RDB_TYPE_SET, tmpSet)
+		item = NewRedisObject(RDB_TYPE_SET, 0, tmpSet)
 		r.mapObj[setKey] = item
 	}
 
@@ -283,6 +284,7 @@ func (r *Rdb) LoadStringObject() (string, error) {
 	if err != nil {
 		return "", err
 	}
+	r.loadingLen = strLen
 
 	if isEncoded {
 		switch strLen {
