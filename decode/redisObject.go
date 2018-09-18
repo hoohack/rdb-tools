@@ -11,6 +11,6 @@ type RedisObject struct {
 	objVal  interface{}
 }
 
-func NewRedisObject(objType int, objVal interface{}) *RedisObject {
-	return &RedisObject{objType, objVal}
+func NewRedisObject(objType int, objLen int, objVal interface{}) *RedisObject {
+	return &RedisObject{objType, objLen, objVal}
 }
