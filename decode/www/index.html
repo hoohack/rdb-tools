@@ -97,7 +97,7 @@
 			$.getJSON("/key/" + keyValue, function(rspData) {
 				console.log(rspData);
                                 var realData = rspData["data"];
-				var trData = "<tr><td>" + keyValue + "</td><td>" + JSON.stringify(realData["val"]) + "</td><td>" + realData["typeName"] + "</td><td>" + realData["length"] + "</td></tr>";
+				var trData = "<tr><td>" + keyValue + "</td><td class='keyVal'>" + JSON.stringify(realData["val"]) + "</td><td>" + realData["typeName"] + "</td><td>" + realData["length"] + "</td></tr>";
 				$("#key-detail-table").find("tbody").append(trData);
 				$("#detail-content").show();
 			});

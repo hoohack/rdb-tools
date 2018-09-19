@@ -69,7 +69,7 @@ type Rdb struct {
 	fp          *os.File
 	rdbType     int
 	mapObj      map[string]*RedisObject
-	loadingLen  int
+	loadingLen  int64
 }
 
 func checkErr(err error) {
@@ -93,6 +93,7 @@ func (r *Rdb) saveHash(hashKey string, hashField string, hashValue string) {
 	}
 
 	item.objVal.(map[string]string)[hashField] = hashValue
+	item.objLen = r.loadingLen
 }
 
 func (r *Rdb) saveListVal(listKey string, listVal string) {
@@ -106,6 +107,7 @@ func (r *Rdb) saveListVal(listKey string, listVal string) {
 	// prepend
 	item.objVal = append([]string{listVal}, item.objVal.([]string)...)
 	r.mapObj[listKey] = item
+	item.objLen = r.loadingLen
 }
 
 func (r *Rdb) saveZset(zsetKey string, member string, score float64) {
@@ -117,6 +119,7 @@ func (r *Rdb) saveZset(zsetKey string, member string, score float64) {
 	}
 
 	item.objVal.(map[string]float64)[member] = score
+	item.objLen = r.loadingLen
 }
 
 func (r *Rdb) saveSet(setKey string, element string) {
@@ -128,6 +131,7 @@ func (r *Rdb) saveSet(setKey string, element string) {
 	}
 
 	item.objVal.(map[string]int)[setKey] = 1
+	item.objLen = r.loadingLen
 }
 
 func (r *Rdb) ReadBuf(length int64) ([]byte, error) {
@@ -140,6 +144,7 @@ func (r *Rdb) ReadBuf(length int64) ([]byte, error) {
 		return []byte{}, err
 	} else {
 		r.curIndex += length
+		r.loadingLen += length
 		return buf, nil
 	}
 }
@@ -284,7 +289,6 @@ func (r *Rdb) LoadStringObject() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	r.loadingLen += strLen
 
 	if isEncoded {
 		switch strLen {
@@ -508,6 +512,7 @@ func (r *Rdb) LoadZipList(redisKey string) (string, error) {
 func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 	r.rdbType = int(objType)
 	r.loadingLen = 0
+	fmt.Printf("objType :%d\n", objType)
 	switch objType {
 	case RDB_TYPE_STRING:
 		strVal, err := r.LoadStringObject()
@@ -586,7 +591,8 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 			decodeStr += fmt.Sprintf("%s => %.0f ; ", member, scoreVal)
 		}
 
-		fmt.Printf("decodeStr: %s", decodeStr)
+		fmt.Printf("loadingLen : %d", r.loadingLen)
+		//fmt.Printf("decodeStr: %s", decodeStr)
 
 		return decodeStr, nil
 	case RDB_TYPE_HASH_ZIPLIST:
@@ -684,12 +690,14 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				return "", err
 			}
 
+			fmt.Printf("loadingLen : %d", r.loadingLen)
 			r.saveZset(redisKey, setMember, score)
 			i++
 
 			fmt.Printf("member %s score %.2f\n", setMember, score)
 		}
 
+		fmt.Printf("final loadingLen : %d", r.loadingLen)
 		return "", nil
 	case RDB_TYPE_LIST_QUICKLIST:
 		r.rdbType = RDB_TYPE_LIST_QUICKLIST
