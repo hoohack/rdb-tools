@@ -36,7 +36,7 @@ type RdbHandler struct {
 type RetData struct {
 	Type     int         `json:"type"`
 	TypeName string      `json:"typeName"`
-	Length   int         `json:"length"`
+	Length   int64       `json:"length"`
 	Val      interface{} `json:"val"`
 }
 
@@ -55,9 +55,12 @@ type ReturnResult struct {
 func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 	var keysArr []string
 	rdb := rh.rdb
+	cNum := 0
 	for k, _ := range rdb.mapObj {
 		keysArr = append(keysArr, k)
+		cNum = cNum + 1
 	}
+	fmt.Printf("len %d\n", cNum)
 
 	sort.Strings(keysArr)
 
@@ -83,7 +86,11 @@ func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := &ReturnResult{Success, "", retArr}
-	response, err := json.MarshalIndent(result, "", " ")
+	ret := map[string]interface{}{
+		"ret":       result,
+		"totalPage": len(keysArr)/PageSize + 1,
+	}
+	response, err := json.MarshalIndent(ret, "", " ")
 	if err != nil {
 		panic(err)
 	}

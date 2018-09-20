@@ -31,7 +31,7 @@
                 <li>
                     <a id="keyslist" href="JavaScript:void(0);">key列表</a>
                 </li>
-            </ul>
+            </ul> 
         </div>
         <!-- /#sidebar-wrapper -->
 
@@ -50,6 +50,11 @@
 				<tbody>
 				</tbody>
 			</table>
+
+			<div class="container">
+			<ul id="page-area" class="list-unstyled list-inline">
+            		</ul>
+			</div>
 		</div>
 
 		<div id="detail-content" style="display: none">
@@ -81,13 +86,24 @@
 	    $("#keylist-table").find("tbody").html("");
 	    $("#detail-content").hide();
 	    $.getJSON("/keys/1", function(reqData) {
-		    if (reqData["data"]) {
-			    var listData = reqData["data"];
+		    console.log(reqData);
+		    if (reqData["ret"]) {
+			    var listData = reqData["ret"]["data"];
 			    $.each(listData, function(key, value) {
 				    var trData = '<tr><td><a class="key" href="JavaScript:void(0);" value="' + value + '">' + value + '</a></td><tr>';
 				    $("#keylist-table").find("tbody").append(trData);
 			    });
 			    $("#list-content").show();
+			    
+			    var totalPage = reqData["totalPage"], pageStr = '';
+			    if (totalPage > 1) {
+				    for (var i = 1; i <= totalPage; i++) {
+					    pageStr += '<li class="page-btn"><a href="JavaScript:void(0);" value="' + i + '">' + i + '</a></li>';
+				    }
+			    } else {
+				    pageStr = '<li class="page-btn current"><a href="JavaScript:void(0);" value="1">1</a></li>';
+			    }
+			    $('#page-area').html(pageStr);
 		    }
 
 		    $(".key").click(function(e) {

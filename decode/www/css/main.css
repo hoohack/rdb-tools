@@ -124,3 +124,8 @@ body {
 .keyVal {
 	word-break: break-all;
 }
+
+.list-inline li {
+	display: inline;
+	margin: 0 1px;
+}

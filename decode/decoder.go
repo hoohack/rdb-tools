@@ -322,6 +322,7 @@ func (r *Rdb) LoadMillisecondTime() (int64, error) {
 }
 
 func (r *Rdb) LoadZSetSize(setBuf string) (int64, error) {
+	fmt.Printf("type: %d\n", r.rdbType)
 	bufByte := []byte(setBuf[8:10])
 
 	return int64(binary.LittleEndian.Uint16(bufByte)), nil
@@ -473,21 +474,20 @@ func (r *Rdb) LoadBinaryDoubleValue() (float64, error) {
 	return floatVal, err
 }
 
-func (r *Rdb) LoadZipList(redisKey string) (string, error) {
+func (r *Rdb) LoadZipList(redisKey string) error {
 	encodedStr, err := r.LoadStringObject()
 	if err != nil {
 		fmt.Println("Fail to load string")
-		return "", err
+		return err
 	}
 
 	setSize, err := r.LoadZSetSize(encodedStr)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	i := int64(0)
 	curIndex := 10
-	zipListStr := "ZipList Item : "
 	for {
 		if i >= setSize {
 			break
@@ -495,40 +495,36 @@ func (r *Rdb) LoadZipList(redisKey string) (string, error) {
 
 		zipListValue, err := r.LoadZipListEntry(encodedStr, &curIndex)
 		if err != nil {
-			return "", err
+			return err
 		}
 
 		r.saveListVal(redisKey, zipListValue)
-		zipListStr += zipListValue + " "
 
 		i++
 	}
 
-	zipListStr += "\n"
-
-	return zipListStr, nil
+	return nil
 }
 
-func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
+func (r *Rdb) LoadObject(redisKey string, objType byte) error {
 	r.rdbType = int(objType)
 	r.loadingLen = 0
-	fmt.Printf("objType :%d\n", objType)
 	switch objType {
 	case RDB_TYPE_STRING:
 		strVal, err := r.LoadStringObject()
 		if err != nil {
 			fmt.Println("Fail to load string object")
-			return "", err
+			return err
 		}
 
 		r.saveStrObj(redisKey, strVal)
 
-		return strVal, nil
+		return nil
 	case RDB_TYPE_HASH:
 		objLen, err := r.LoadLen(nil)
 		if err != nil {
 			fmt.Println("Fail to load hash object len")
-			return "", err
+			return err
 		}
 
 		i := 0
@@ -539,109 +535,105 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 			hashField, err := r.LoadStringObject()
 			if err != nil {
 				fmt.Println("Fail to load hash field")
-				return "", err
+				return err
 			}
 
 			hashValue, err := r.LoadStringObject()
 			if err != nil {
 				fmt.Println("Fail to load hash value")
-				return "", err
+				return err
 			}
 
 			r.saveHash(redisKey, hashField, hashValue)
-			fmt.Printf("%s => %s\n", hashField, hashValue)
+			//fmt.Printf("%s => %s\n", hashField, hashValue)
 			i++
 		}
 
-		return "", nil
+		return nil
 	case RDB_TYPE_ZSET_ZIPLIST:
 		r.rdbType = RDB_TYPE_ZSET_ZIPLIST
 		encodedStr, err := r.LoadStringObject()
 		if err != nil {
 			fmt.Println("Fail to load string")
-			return "", err
+			return err
 		}
 
 		setSize, err := r.LoadZSetSize(encodedStr)
 		if err != nil {
-			return "", err
+			return err
 		}
 
 		setSize /= 2
 		curIndex := 10
-		decodeStr := ""
 
 		for i := int64(0); i < setSize; i++ {
 			member, err := r.LoadZipListEntry(encodedStr, &curIndex)
 			if err != nil {
-				return "", err
+				return err
 			}
 
 			scoreBuf, err := r.LoadZipListEntry(encodedStr, &curIndex)
 			if err != nil {
-				return "", err
+				return err
 			}
 
 			scoreVal, err := strconv.ParseFloat(scoreBuf, 64)
 			if err != nil {
-				return "", err
+				return err
 			}
 
 			r.saveZset(redisKey, member, scoreVal)
-			decodeStr += fmt.Sprintf("%s => %.0f ; ", member, scoreVal)
 		}
 
-		fmt.Printf("loadingLen : %d", r.loadingLen)
 		//fmt.Printf("decodeStr: %s", decodeStr)
 
-		return decodeStr, nil
+		return nil
 	case RDB_TYPE_HASH_ZIPLIST:
 		r.rdbType = RDB_TYPE_HASH_ZIPLIST
 		encodedStr, err := r.LoadStringObject()
 		if err != nil {
 			fmt.Println("Fail to load string")
-			return "", err
+			return err
 		}
 
 		hashSize, err := r.LoadZSetSize(encodedStr)
 		if err != nil {
-			return "", err
+			return err
 		}
 
 		hashSize /= 2
 		curIndex := 10
-		decodeStr := ""
 		for i := int64(0); i < hashSize; i++ {
 			hashField, err := r.LoadZipListEntry(encodedStr, &curIndex)
 			if err != nil {
-				return "", err
+				return err
 			}
 
 			hashValue, err := r.LoadZipListEntry(encodedStr, &curIndex)
 			if err != nil {
-				return "", err
+				return err
 			}
 
 			r.saveHash(redisKey, hashField, hashValue)
-			decodeStr += fmt.Sprintf("%s => %s ; ", hashField, string(hashValue))
+			//decodeStr += fmt.Sprintf("%s => %s ; ", hashField, string(hashValue))
 		}
 
-		return decodeStr, nil
+		return nil
 	case RDB_TYPE_SET_INTSET:
-		encodedStr, err := r.LoadStringObject()
-		if err != nil {
-			fmt.Println("Fail to load string")
-			return "", err
-		}
+		/*encodedStr, err := r.LoadStringObject()*/
+		//if err != nil {
+		//fmt.Println("Fail to load string")
+		//return err
+		/*}*/
 
-		fmt.Printf("INTSET encoded :%s\n", encodedStr)
+		//fmt.Printf("INTSET encoded :%s\n", encodedStr)
 
-		return "", nil
+		return nil
 	case RDB_TYPE_SET:
 		objLen, err := r.LoadLen(nil)
 		if err != nil {
 			fmt.Println("Fail to load hash object len")
-			return "", err
+			return err
 		}
 
 		i := 0
@@ -651,21 +643,21 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 			}
 			element, err := r.LoadStringObject()
 			if err != nil {
-				return "", err
+				return err
 			}
 
 			r.saveSet(redisKey, element)
-			fmt.Printf("element: %s\n", element)
+			//fmt.Printf("element: %s\n", element)
 
 			i++
 		}
 
-		return "", nil
+		return nil
 	case RDB_TYPE_ZSET, RDB_TYPE_ZSET_2:
 		zsetLen, err := r.LoadLen(nil)
 		if err != nil {
 			fmt.Println("Fail to load ZSET len")
-			return "", nil
+			return nil
 		}
 
 		i := 0
@@ -676,7 +668,7 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 
 			setMember, err := r.LoadStringObject()
 			if err != nil {
-				return "", err
+				return err
 			}
 
 			var score float64
@@ -687,24 +679,24 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 			}
 
 			if err != nil {
-				return "", err
+				return err
 			}
 
-			fmt.Printf("loadingLen : %d", r.loadingLen)
+			//fmt.Printf("loadingLen : %d", r.loadingLen)
 			r.saveZset(redisKey, setMember, score)
 			i++
 
-			fmt.Printf("member %s score %.2f\n", setMember, score)
+			//fmt.Printf("member %s score %.2f\n", setMember, score)
 		}
 
 		fmt.Printf("final loadingLen : %d", r.loadingLen)
-		return "", nil
+		return nil
 	case RDB_TYPE_LIST_QUICKLIST:
 		r.rdbType = RDB_TYPE_LIST_QUICKLIST
 		listLen, err := r.LoadLen(nil)
 		if err != nil {
 			fmt.Println("Fail to load QUICKLIST len")
-			return "", nil
+			return nil
 		}
 
 		i := 0
@@ -713,21 +705,21 @@ func (r *Rdb) LoadObject(redisKey string, objType byte) (string, error) {
 				break
 			}
 
-			listVal, err := r.LoadZipList(redisKey)
+			err := r.LoadZipList(redisKey)
 			if err != nil {
-				return "", err
+				return err
 			}
 
 			i++
 
-			fmt.Printf("list item: %s\n", listVal)
+			//fmt.Printf("list item: %s\n", listVal)
 		}
 
-		return "", nil
+		return nil
 	default:
 		fmt.Printf("object type %d\n", objType)
 		os.Exit(-1)
-		return "", nil
+		return nil
 	}
 }
 
@@ -812,11 +804,11 @@ func (rdb *Rdb) DecodeRDBFile() {
 		redisKey, err := rdb.LoadStringObject()
 		checkErr(err)
 
-		fmt.Printf("key: %s\n", redisKey)
+		//fmt.Printf("key: %s\n", redisKey)
 
-		redisVal, err := rdb.LoadObject(redisKey, redisType)
+		err = rdb.LoadObject(redisKey, redisType)
 		checkErr(err)
 
-		fmt.Printf("%s: %s\n", redisKey, redisVal)
+		//fmt.Printf("%s: %s\n", redisKey, redisVal)
 	}
 }
