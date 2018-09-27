@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"sort"
@@ -60,15 +61,15 @@ func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 		keysArr = append(keysArr, k)
 		cNum = cNum + 1
 	}
-	fmt.Printf("len %d\n", cNum)
 
 	sort.Strings(keysArr)
 
 	var page int = 1
+	var err error = nil
 	vars := mux.Vars(r)
 	pageVar, ok := vars["page"]
 	if ok {
-		page, err := strconv.Atoi(pageVar)
+		page, err = strconv.Atoi(pageVar)
 		if err != nil {
 			fmt.Printf("convert string to int failed, page: %s", page)
 			return
@@ -88,7 +89,7 @@ func (rh *RdbHandler) getAllKeys(w http.ResponseWriter, r *http.Request) {
 	result := &ReturnResult{Success, "", retArr}
 	ret := map[string]interface{}{
 		"ret":       result,
-		"totalPage": len(keysArr)/PageSize + 1,
+		"totalPage": math.Ceil(float64(len(keysArr) / PageSize)),
 	}
 	response, err := json.MarshalIndent(ret, "", " ")
 	if err != nil {
